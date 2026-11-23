@@ -121,9 +121,21 @@ def check_banned_terms(latest_message: str) -> bool:
         if 'liability' in l and 'unlimited' in l and 'acme' in l:
             return True
 
-        # 4. Exclusivity
-        if re.search(r'\bexclusive\b|\bexclusivity\b', l):
-            if not re.search(r'not asking for exclusivity|no exclusivity', l):
+        # 4. Exclusivity (banned: Acme must buy only from this supplier)
+        is_negated = bool(re.search(
+            r'not\s+(?:asking\s+for\s+)?exclusiv|no\s+exclusiv|without\s+exclusiv|do\s+not\s+require\s+exclusiv',
+            l
+        ))
+        if not is_negated:
+            exclusivity_patterns = (
+                r'\bexclusive\b|\bexclusivity\b|'
+                r'\bbuy\s+(?:[a-z0-9_\-\s]+?\s+)?only\s+from\s+us\b|'
+                r'\bonly\s+from\s+us\b|'
+                r'\bbuy\s+exclusively\s+from\s+us\b|'
+                r'\bsole(?:\s*-\s*source)?\s+supplier\b|'
+                r'\bsole\s+source\b'
+            )
+            if re.search(exclusivity_patterns, l):
                 return True
 
     return False

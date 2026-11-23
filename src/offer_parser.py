@@ -58,6 +58,37 @@ def extract_latest_message(thread_message: str) -> str:
     return thread_message
 
 
+def extract_earlier_supplier_text(full_message: str) -> str:
+    """Extract earlier message text authored strictly by the supplier, excluding Acme counteroffers."""
+    if not full_message:
+        return ""
+    # Split by bracketed message headers: [Earlier message ...], [Latest message ...]
+    parts = re.split(r'(\[(?:Earlier|Latest)\s+message[^\]]*\])', full_message)
+    supplier_bodies = []
+    current_header = ""
+    for part in parts:
+        if part.startswith('[') and part.endswith(']'):
+            current_header = part
+        else:
+            if current_header and 'Acme' not in current_header and 'Latest' not in current_header:
+                supplier_bodies.append(part)
+
+    if not supplier_bodies and '[Latest message' in full_message:
+        pre_latest = full_message.split('[Latest message')[0]
+        lines = []
+        skip_acme = False
+        for line in pre_latest.splitlines():
+            if 'Acme' in line:
+                skip_acme = True
+            elif line.startswith('[Earlier message'):
+                skip_acme = False
+            if not skip_acme:
+                lines.append(line)
+        supplier_bodies.append('\n'.join(lines))
+
+    return "\n".join(supplier_bodies)
+
+
 def words_to_number(text: str) -> Optional[float]:
     """Convert English word numerals (including Indian lakh/crore) to float."""
     tokens = re.findall(r'[a-z]+', text.lower())
@@ -261,10 +292,11 @@ def extract_and_normalize_offer(
         pattern_matched = "previous_quote_discount"
         m_prev = re.search(r'(\d+(?:\.\d+)?%)\s+off our previous quote', latest, re.IGNORECASE)
         disc_pct = float(m_prev.group(1).replace('%', '')) / 100.0
-        # Search for supplier's own earlier quote in the thread
+        # Search strictly within supplier's own earlier quotes in the thread
+        earlier_supplier_txt = extract_earlier_supplier_text(full_msg)
         m_earlier = re.findall(
-            r'(?:quote is|earlier quote was|we can do)\s+([^\n]+?)\s+per',
-            full_msg,
+            r'(?:quote is|earlier quote was|quote was|we can do|price is|can offer|offer)\s+([^\n]+?)\s+per',
+            earlier_supplier_txt,
             re.IGNORECASE
         )
         if m_earlier:
@@ -318,22 +350,63 @@ def extract_and_normalize_offer(
 
     raw_price = price_val
 
-    # 5. Pack and sub-unit conversions
-    if re.search(r'per pack of 4 fixtures', latest, re.IGNORECASE):
+    # Check for missing subscription billing period (decision-procedure.md Step 1 & units-and-currency.md)
+    # A subscription price with no period is missing information (ESCALATE:MISSING_INFO:)
+    billing_period_re = re.compile(
+        r'(?:per\s+(?:seat|server|site|guard|unit|license)\s+per\s+(?:month|year|annum)\b|'
+        r'per\s+(?:month|year|annum)\b|'
+        r'/\s*(?:mo|yr|month|year)\b|'
+        r'\bp\.a\.\b|'
+        r'\bannually\b|'
+        r'\bmonthly\b)',
+        re.IGNORECASE
+    )
+    if cat_slug in ALL_SUBSCRIPTION_CATEGORIES:
+        has_period = False
+        if pattern_matched == "previous_quote_discount":
+            earlier_txt = extract_earlier_supplier_text(full_msg)
+            has_period = bool(billing_period_re.search(earlier_txt))
+        else:
+            has_period = bool(billing_period_re.search(latest))
+
+        if not has_period:
+            return ParsedOffer(
+                normalized_price=None,
+                is_missing_info=True,
+                raw_quoted_price=raw_price,
+                currency=currency,
+                exchange_rate=rate,
+                is_gst_inclusive=is_gst_inclusive,
+                details={"reason": "missing_subscription_period", "pattern": pattern_matched}
+            )
+
+    # 5. Pack, sub-unit, and batch conversions
+    if re.search(r'per pack of 4 fixtures\b', latest, re.IGNORECASE):
         price_val /= 4.0
-    elif re.search(r'per dozen', latest, re.IGNORECASE):
+    elif re.search(r'per dozen\b', latest, re.IGNORECASE):
         price_val /= 12.0
     elif re.search(r'per ream\b', latest, re.IGNORECASE) and cat_slug == 'printer-paper':
         price_val *= 10.0
+    else:
+        # Generic batch conversion: per N units (e.g. per 100 fixtures, per 100 meals, per 100 shipments)
+        m_batch = re.search(
+            r'per\s+(\d+)\s+(?:fixtures|meals|shipments|monitors|chairs|phones|laptops|headsets|servers|seats|sites|guards|participants|boxes|boxs|units|items)\b',
+            latest,
+            re.IGNORECASE
+        )
+        if m_batch:
+            divisor = float(m_batch.group(1))
+            if divisor > 1.0:
+                price_val /= divisor
 
     # 6. Subscription billing period conversions
     if cat_slug in SUBSCRIPTION_CATEGORIES_ANNUAL:
         # Category requires annual. If quoted monthly, multiply by 12
-        if re.search(r'per\s+(?:seat|server)\s+per\s+month\b|per\s+month\b', latest, re.IGNORECASE):
+        if re.search(r'per\s+(?:seat|server)\s+per\s+month\b|per\s+month\b|\bmonthly\b|/\s*mo\b', latest, re.IGNORECASE):
             price_val *= 12.0
     elif cat_slug in SUBSCRIPTION_CATEGORIES_MONTHLY:
         # Category requires monthly. If quoted yearly/annual, divide by 12
-        if re.search(r'per\s+(?:site|guard)\s+per\s+year\b|per\s+year\b|annually\b', latest, re.IGNORECASE):
+        if re.search(r'per\s+(?:site|guard)\s+per\s+year\b|per\s+year\b|\bannually\b|\byearly\b|\bp\.a\.\b|per\s+annum\b|/\s*yr\b', latest, re.IGNORECASE):
             price_val /= 12.0
 
     # 7. Currency conversion to INR
