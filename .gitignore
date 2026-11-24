@@ -1,5 +1,16 @@
+@'
 venv/
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
+.ipynb_checkpoints/
+backup_submission1_src/
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+'@ | Set-Content .gitignore
