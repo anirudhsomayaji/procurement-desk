@@ -711,8 +711,6 @@ ChatGPT and Google Antigravity were used as development-assistance tools during 
 
 Their assistance included technical explanations, code suggestions, debugging support and documentation assistance.
 
-The final source code, configuration, test results and generated decisions must be reviewed and validated by the team.
-
 No externally hosted generative AI model is called by the final prediction pipeline.
 
 ## 10.3 Third-Party Libraries
@@ -727,14 +725,6 @@ The project uses the following third-party Python libraries:
 Their dependencies are listed in `requirements.txt`.
 
 The project also uses Python's standard library, including modules for regular expressions, file handling, mathematical calculations and data structures.
-
-## 10.4 External Resources
-
-The procurement policies, category rules, supplier information and amendments are organized in the project's playbook directory.
-
-Any additional external code, templates or resources used by the team should be acknowledged here with their respective sources.
-
-The team should not claim exclusive authorship of third-party libraries or external resources.
 
 ---
 
@@ -840,8 +830,6 @@ The final file must contain exactly 2,000 data rows.
 ## 11.9 Kaggle Submission
 
 Upload the generated `output/submission.csv` to the competition's prediction-submission interface.
-
-The separate `output/error_report.csv` is a diagnostic artifact and must never be submitted as the competition prediction file.
 
 For the final evaluation, the `output/submission.csv` committed to this repository must be the same prediction artifact selected for the team's Kaggle submission.
 
