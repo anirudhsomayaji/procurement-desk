@@ -704,7 +704,6 @@ The project-specific implementation includes:
 - Submission generation and validation.
 - Unit and integration tests.
 
-Team member names and individual contributions should be listed here according to the actual work performed by each registered team member.
 
 ## 10.2 AI-Assisted Development Disclosure
 
